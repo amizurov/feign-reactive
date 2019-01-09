@@ -5,13 +5,12 @@
 version: 2
 jobs:
   build:
-    machine:
-      image: circleci/classic:latest
+    docker:
+      - image: circleci/openjdk:11-browsers
 
     environment:
       # Customize the JVM maximum heap limit
       MAVEN_OPTS: -Xmx1024m
-      JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
 
     steps:
       - add_ssh_keys:
@@ -19,15 +18,8 @@ jobs:
             - "ae:b8:4a:86:da:b3:7f:35:f5:62:68:61:d6:29:8b:ac"
       - checkout
       - run:
-           name: Install JDK 11
-           command: |
-                  sudo add-apt-repository ppa:openjdk-r/ppa;
-                  sudo apt-get update -q;
-                  sudo apt install -y openjdk-11-jdk-headless
-           when: always
-      - run:
           name: Run build with tests
-          command:  if [[ -z "$GIT_USER_EMAIL" ]]; then  mvn clean  install -U -P sonar -nsu --batch-mode -Dmaven.test.redirectTestOutputToFile=true;fi
+          command:  if [[ -z "$GIT_USER_EMAIL" ]]; then  mvn clean  install;fi
       - run:
            name: Save test results
            command: |
