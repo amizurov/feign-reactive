@@ -2,10 +2,11 @@ package reactivefeign.cloud;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
-import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
-import com.netflix.client.*;
+import com.netflix.client.ClientException;
+import com.netflix.client.ClientFactory;
 import com.netflix.client.config.CommonClientConfigKey;
 import com.netflix.client.config.DefaultClientConfigImpl;
+import com.netflix.client.config.IClientConfig;
 import com.netflix.loadbalancer.BaseLoadBalancer;
 import com.netflix.loadbalancer.ILoadBalancer;
 import com.netflix.loadbalancer.Server;
@@ -13,6 +14,9 @@ import feign.RequestLine;
 import feign.RetryableException;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.cloud.netflix.ribbon.*;
+import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -30,44 +34,87 @@ import static reactivefeign.retry.BasicReactiveRetryPolicy.retry;
 /**
  * @author Sergii Karpenko
  */
+//@RunWith(SpringRunner.class)
+//@SpringBootTest(classes = LoadBalancingReactiveHttpClientTest.TestConfiguration.class,
+//        webEnvironment = SpringBootTest.WebEnvironment.NONE,
+//        properties = "ribbon.listOfServers=localhost:${"+MOCK_SERVER_1_PORT_PROPERTY+"}, localhost:${"+MOCK_SERVER_2_PORT_PROPERTY+"}")
+//@DirtiesContext
 public class LoadBalancingReactiveHttpClientTest {
 
     public static final String MONO_URL = "/mono";
     public static final String FLUX_URL = "/flux";
 
-    @ClassRule
-    public static WireMockClassRule server1 = new WireMockClassRule(wireMockConfig().dynamicPort());
-    @ClassRule
-    public static WireMockClassRule server2 = new WireMockClassRule(wireMockConfig().dynamicPort());
+    private static WireMockServer server1 = new WireMockServer(wireMockConfig().dynamicPort());
+    private static WireMockServer server2 = new WireMockServer(wireMockConfig().dynamicPort());
 
     @Rule
     public ExpectedException expectedException = ExpectedException.none();
 
+    private static SpringClientFactory springClientFactory;
+
     private static String serviceName = "LoadBalancingTargetTest-loadBalancingDefaultPolicyRoundRobin";
 
     @BeforeClass
-    public static void setupServersList() throws ClientException {
+    public static void setupServers() throws ClientException {
+        server1.start();
+        server2.start();
+
         DefaultClientConfigImpl clientConfig = new DefaultClientConfigImpl();
         clientConfig.loadDefaultValues();
         clientConfig.setProperty(CommonClientConfigKey.NFLoadBalancerClassName, BaseLoadBalancer.class.getName());
         ILoadBalancer lb = ClientFactory.registerNamedLoadBalancerFromclientConfig(serviceName, clientConfig);
         lb.addServers(asList(new Server("localhost", server1.port()), new Server("localhost", server2.port())));
+
+        springClientFactory = new SpringClientFactory() {
+            @Override
+            public IClientConfig getClientConfig(String name) {
+                return clientConfig;
+            }
+
+            @Override
+            public ILoadBalancer getLoadBalancer(String name) {
+                return lb;
+            }
+
+            @Override
+            public RibbonLoadBalancerContext getLoadBalancerContext(String serviceId) {
+                return new RibbonLoadBalancerContext(lb, clientConfig);
+            }
+
+            @Override
+            public <C> C getInstance(String name, Class<C> type) {
+                if (type.isAssignableFrom(ServerIntrospector.class)) {
+                    @SuppressWarnings("unchecked")
+                    C instance = (C) new DefaultServerIntrospector();
+                    return instance;
+                }
+                return null;
+            }
+        };
+    }
+
+    @AfterClass
+    public static void teardown() {
+        server1.stop();
+        server2.stop();
     }
 
     @Before
-    public void resetServers() {
+    public void reset(){
         server1.resetAll();
         server2.resetAll();
     }
+
 
     @Test
     public void shouldLoadBalanceRequests() {
         String body = "success!";
         mockSuccessMono(server1, body);
+
         mockSuccessMono(server2, body);
 
         TestMonoInterface client = BuilderUtils.<TestMonoInterface>cloudBuilder()
-                .enableLoadBalancer()
+                .enableLoadBalancer(new RibbonLoadBalancerClient(springClientFactory))
                 .disableHystrix()
                 .target(TestMonoInterface.class, "http://" + serviceName);
 
@@ -89,7 +136,7 @@ public class LoadBalancingReactiveHttpClientTest {
         mockSuccessFlux(server2, body);
 
         TestFluxInterface client = BuilderUtils.<TestFluxInterface>cloudBuilder()
-                .enableLoadBalancer()
+                .enableLoadBalancer(new RibbonLoadBalancerClient(springClientFactory))
                 .disableHystrix()
                 .target(TestFluxInterface.class, "http://" + serviceName);
 
@@ -167,11 +214,10 @@ public class LoadBalancingReactiveHttpClientTest {
                             .withBody(body));
         });
 
-        RetryHandler retryHandler = new RequestSpecificRetryHandler(true, true,
-                new DefaultLoadBalancerRetryHandler(0, retryOnNext, true), null);
-
         TestMonoInterface client = BuilderUtils.<TestMonoInterface>cloudBuilder()
-                .enableLoadBalancer(ReactiveFeignClientFactory.DEFAULT, retryHandler)
+                .enableLoadBalancer(
+                        new RibbonLoadBalancerClient(springClientFactory),
+                        retry(retryOnNext))
                 .disableHystrix()
                 .retryWhen(retry(retryOnSame))
                 .target(TestMonoInterface.class, "http://" + serviceName);
@@ -180,40 +226,7 @@ public class LoadBalancingReactiveHttpClientTest {
         assertThat(result).isEqualTo(body);
     }
 
-    @Test
-    public void shouldRetryOnSameAndSuccessWithWarning() {
-
-        loadBalancingWithRetryWithWarning(2, 2, 0);
-
-        assertThat(server1.getAllServeEvents().size() == 3
-                ^ server2.getAllServeEvents().size() == 3);
-
-    }
-
-    private void loadBalancingWithRetryWithWarning(int failedAttemptsNo, int retryOnSame, int retryOnNext) {
-        String body = "success!";
-        Stream.of(server1, server2).forEach(server -> {
-            mockSuccessAfterSeveralAttempts(server, MONO_URL,
-                    failedAttemptsNo, 503,
-                    aResponse()
-                            .withStatus(200)
-                            .withHeader("Content-Type", "application/json")
-                            .withBody(body));
-        });
-
-        RetryHandler retryHandler = new RequestSpecificRetryHandler(true, true,
-                new DefaultLoadBalancerRetryHandler(retryOnSame, retryOnNext, true), null);
-
-        TestMonoInterface client = BuilderUtils.<TestMonoInterface>cloudBuilder()
-                .enableLoadBalancer(ReactiveFeignClientFactory.DEFAULT, retryHandler)
-                .disableHystrix()
-                .target(TestMonoInterface.class, "http://" + serviceName);
-
-        String result = client.getMono().block();
-        assertThat(result).isEqualTo(body);
-    }
-
-    static void mockSuccessMono(WireMockClassRule server, String body) {
+    static void mockSuccessMono(WireMockServer server, String body) {
         server.stubFor(get(urlEqualTo(MONO_URL))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -221,7 +234,7 @@ public class LoadBalancingReactiveHttpClientTest {
                         .withBody(body)));
     }
 
-    static void mockSuccessFlux(WireMockClassRule server, String body) {
+    static void mockSuccessFlux(WireMockServer server, String body) {
         server.stubFor(get(urlEqualTo(FLUX_URL))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -263,4 +276,5 @@ public class LoadBalancingReactiveHttpClientTest {
         @RequestLine("GET "+FLUX_URL)
         Flux<Integer> getFlux();
     }
+
 }

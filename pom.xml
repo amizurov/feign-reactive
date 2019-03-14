@@ -317,11 +317,6 @@
             </dependency>
 
             <!--Cloud part-->
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-netflix-ribbon</artifactId>
-                <version>${spring-cloud.version}</version>
-            </dependency>
 
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
@@ -332,6 +327,12 @@
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-commons</artifactId>
+                <version>${spring-cloud.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-netflix-ribbon</artifactId>
                 <version>${spring-cloud.version}</version>
             </dependency>
 
