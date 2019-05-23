@@ -96,6 +96,11 @@ public interface AllFeaturesFeign extends AllFeaturesApi{
 	Mono<Map<String, String>> mirrorBodyMapReactive(Publisher<Map<String, String>> body);
 
 	@Override
+	@RequestLine("POST " + "/returnBodyStream")
+	@Headers({ "Accept: "+APPLICATION_STREAM_JSON_VALUE})
+	Flux<TestObject> returnBodyStream();
+
+	@Override
 	@RequestLine("POST " + "/mirrorBodyStream")
 	@Headers({ "Content-Type: "+APPLICATION_STREAM_JSON_VALUE,
 			   "Accept: "+APPLICATION_STREAM_JSON_VALUE})

@@ -128,6 +128,11 @@ public class AllFeaturesController implements AllFeaturesMvc {
 	}
 
 	@Override
+	public Flux<AllFeaturesApi.TestObject> returnBodyStream() {
+		return Flux.just(new TestObject("1"), new TestObject("2"));
+	}
+
+	@Override
 	public Flux<AllFeaturesApi.TestObject> mirrorBodyStream(
 			Publisher<AllFeaturesApi.TestObject> bodyStream) {
 		return Flux.from(bodyStream);

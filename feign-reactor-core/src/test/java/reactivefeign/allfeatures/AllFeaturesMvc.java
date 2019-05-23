@@ -92,9 +92,14 @@ public interface AllFeaturesMvc extends AllFeaturesApi {
 			@RequestBody Publisher<Map<String, String>> body);
 
 	@Override
+	@PostMapping(path = "/returnBodyStream")
+	Flux<TestObject> returnBodyStream();
+
+	@Override
 	@PostMapping(path = "/mirrorBodyStream")
 	Flux<TestObject> mirrorBodyStream(
 			@RequestBody Publisher<TestObject> bodyStream);
+
 
 	@Override
 	@PostMapping(path = "/mirrorIntegerBodyStream")

@@ -30,6 +30,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.test.context.junit4.SpringRunner;
+import reactivefeign.testcase.domain.Flavor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -262,6 +263,21 @@ abstract public class AllFeaturesTest {
 		Mono<Map<String, String>> publisher = client.mirrorBodyMapReactive(just(bodyMap));
 		StepVerifier.create(publisher)
 				.consumeNextWith(map -> assertThat(map).containsAllEntriesOf(bodyMap))
+				.verifyComplete();
+	}
+
+	@Test
+	public void shouldReturnFluxBody()  {
+		StepVerifier.create(client.returnBodyStream())
+				.expectNextSequence(asList(new AllFeaturesApi.TestObject("1"), new AllFeaturesApi.TestObject("2")))
+				.verifyComplete();
+	}
+
+	@Test
+	public void shouldMirrorFluxBody()  {
+		List<AllFeaturesApi.TestObject> list = asList(new AllFeaturesApi.TestObject("1"), new AllFeaturesApi.TestObject("2"));
+		StepVerifier.create(client.mirrorBodyStream(Flux.fromIterable(list)))
+				.expectNextSequence(list)
 				.verifyComplete();
 	}
 

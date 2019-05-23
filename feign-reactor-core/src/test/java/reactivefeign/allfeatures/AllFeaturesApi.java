@@ -60,6 +60,8 @@ public interface AllFeaturesApi {
 
 	Mono<Map<String, String>> mirrorBodyMapReactive(Publisher<Map<String, String>> body);
 
+	Flux<TestObject> returnBodyStream();
+
 	Flux<TestObject> mirrorBodyStream(Publisher<TestObject> bodyStream);
 
 	Flux<Integer> mirrorIntegerBodyStream(Flux<Integer> body);
@@ -91,6 +93,11 @@ public interface AllFeaturesApi {
 
 		public TestObject(String payload) {
 			this.payload = payload;
+		}
+
+		@Override
+		public boolean equals(Object obj){
+			return ((TestObject)obj).payload.equals(this.payload);
 		}
 	}
 

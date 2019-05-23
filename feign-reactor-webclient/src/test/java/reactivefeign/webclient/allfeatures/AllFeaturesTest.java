@@ -47,9 +47,15 @@ public class AllFeaturesTest extends AllFeaturesFeignTest {
 	}
 
 	//WebClient is not able to do this
-	@Ignore
+//	@Ignore
 	@Test
 	@Override
 	public void shouldMirrorStringStreamBody() {
+	}
+
+	@Test
+	@Override
+	public void shouldMirrorFluxBody()  {
+		super.shouldMirrorFluxBody();
 	}
 }
